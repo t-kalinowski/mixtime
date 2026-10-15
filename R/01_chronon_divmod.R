@@ -37,6 +37,11 @@ S7::method(chronon_divmod, list(mt_unit, mt_unit)) <- function(from, to, x) {
     return(fdivmod(vec_data(x), to@n / from@n))
   }
 
+  direct <- chronon_method_units(chronon_divmod, from, to)
+  if (!is.null(direct)) {
+    return(chronon_divmod(direct[[1L]], direct[[2L]], x))
+  }
+
   # Apply graph dispatch to find shortest path between from and to using
   # divmod conversions between time granules (e.g. day -> month)
   path <- S7_graph_dispatch(chronon_divmod_graph(), from, to)
@@ -76,10 +81,11 @@ S7::method(chronon_divmod, list(mt_unit, mt_unit)) <- function(from, to, x) {
 }
 
 chronon_divmod_dispatch <- function(from, to, x) {
-  if (is.null(chronon_divmod@methods[[S7_class_id(from)]][[S7_class_id(to)]])) {
+  direct <- chronon_method_units(chronon_divmod, from, to)
+  if (is.null(direct)) {
     return(chronon_divmod_regular(from, to, x))
   } else {
-    return(chronon_divmod(from, to, x))
+    return(chronon_divmod(direct[[1L]], direct[[2L]], x))
   }
 }
 

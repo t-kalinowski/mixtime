@@ -1,7 +1,7 @@
 #' @importFrom S7 props props<-
 granule_inherit_props <- function(x, parent) {
-  naive_props <- is.naive(props <- props(x))
-  parent_props <- props(parent)
+  naive_props <- is.naive(props <- granule_props(x))
+  parent_props <- granule_props(parent)
   inherit_props <- intersect(names(props)[naive_props], names(parent_props))
   props[inherit_props] <- parent_props[inherit_props]
   props(x) <- props
@@ -14,10 +14,10 @@ granule_inherit_shared_props <- function(x, parents) {
   # value every parent agrees on, then let granule_inherit_props() perform
   # the actual copy (a no-op for properties left untouched below).
   shared <- x
-  shared_props <- props(shared)
+  shared_props <- granule_props(shared)
 
   for (prop in names(shared_props)[is.naive(shared_props)]) {
-    values <- lapply(parents, function(parent) props(parent)[[prop]])
+    values <- lapply(parents, function(parent) granule_props(parent)[[prop]])
 
     is_unset <- vapply(values, function(value) {
       # `tz` (and other naive-fillable properties) can carry an explicit NA
@@ -60,7 +60,7 @@ granule_identical <- function(x, y) {
   if (!identical(S7_class_id(x), S7_class_id(y))) {
     return(FALSE)
   }
-  props_equal(props(x), props(y))
+  props_equal(granule_props(x), granule_props(y))
 }
 
 # Are the named property lists `x` and `y` the same, treating integer and
@@ -89,9 +89,23 @@ props_equal <- function(x, y) {
 # sentinel, e.g. an unset `tz`) into an explicit NA of the same underlying
 # type (e.g. `datetime(x, tz = NA)`'s naive result)
 granule_harden_naive <- function(x) {
-  props <- props(x)
+  props <- granule_props(x)
   naive_props <- is.naive(props)
   props[naive_props] <- lapply(props[naive_props], unclass)
   props(x) <- props
   x
+}
+
+# Calendar context belongs to the unit's class, rather than to the mutable
+# time zone, location, and size properties reconciled between granules.
+granule_props <- function(x) {
+  props(x, setdiff(S7::prop_names(x), ".calendar"))
+}
+
+granule_reclass <- function(x, class) {
+  if (S7::S7_inherits(x, class)) {
+    return(x)
+  }
+  values <- granule_props(x)
+  do.call(class, values[intersect(names(values), names(class@properties))])
 }

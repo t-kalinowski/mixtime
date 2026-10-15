@@ -34,6 +34,10 @@ for standard units, \code{\link{mt_tz_unit}} for timezone-aware units (civil tim
 \code{\link{mt_loc_unit}} for location-aware units (astronomical time). The calendar
 object provides a namespace for accessing these unit constructors and
 defines the relationships between them for calendar arithmetic.
+
+Each calendar contains its own subclasses of the supplied time units.
+Methods for the supplied units are inherited, and each constructed granule
+retains its calendar when reconstructed with \code{S7::S7_class()} or serialized.
 }
 \examples{
 # Create a simple calendar with year and month units

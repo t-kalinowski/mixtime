@@ -51,7 +51,7 @@ method(chronon_epoch, cal_isoweek$year) <- function(x) 1970L
 method(chronon_format_linear, list(cal_isoweek$year, class_any)) <- function(x, cal) "{lin(year)}"
 method(chronon_format_linear, list(cal_isoweek$week, class_any)) <- function(x, cal) "{lin(year)} W{cyc(week,year)}"
 method(chronon_format_linear, list(cal_isoweek$day, S7::new_S3_class("cal_isoweek"))) <- function(x, cal) "{lin(year)}-W{cyc(week,year)}-{cyc(day,week,label=TRUE)}"
-method(chronon_format_cyclical, list(cal_isoweek$day, cal_isoweek$week)) <- function(x, y) "{cyc(day,week,label=TRUE)}"
+method(chronon_format_cyclical, list(cal_time_civil$day, cal_isoweek$week)) <- function(x, y) "{cyc(day,week,label=TRUE)}"
 method(chronon_format_cyclical, list(cal_isoweek$week, cal_isoweek$year)) <- function(x, y) "W{cyc(week,year)}"
 
 # Candidate parsing formats
@@ -73,7 +73,7 @@ method(chronon_parse_linear, list(cal_isoweek$day, S7::new_S3_class("cal_isoweek
     regex = TRUE
   )
 }
-method(chronon_parse_cyclical, list(cal_isoweek$day, cal_isoweek$week)) <- function(x, y) {
+method(chronon_parse_cyclical, list(cal_time_civil$day, cal_isoweek$week)) <- function(x, y) {
   # e.g. "3", "Wed", "Wednesday"
   parse_format("{cyc(day,week)}")
 }
@@ -191,7 +191,7 @@ week.abb <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 week.name <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 # TODO: Add offset for different week starting days
-method(cyclical_labels, list(cal_isoweek$day, cal_isoweek$week)) <- label_scheme(
+method(cyclical_labels, list(cal_time_civil$day, cal_isoweek$week)) <- label_scheme(
   start = 1L,
   vocab = vocab_table(`en-GB` = list(wide = week.name, abbreviated = week.abb))
 )

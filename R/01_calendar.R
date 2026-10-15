@@ -20,6 +20,11 @@
 #'   defined in `...` will override inherited units with the same name.
 #' @param class Character vector of additional classes for the calendar object.
 #'
+#' @details
+#' Each calendar contains its own subclasses of the supplied time units.
+#' Methods for the supplied units are inherited, and each constructed granule
+#' retains its calendar when reconstructed with `S7::S7_class()` or serialized.
+#'
 #' @return A calendar object of class `c(class, "mt_calendar")`, consisting of a
 #'   named list containing the specified time unit classes.
 #'
@@ -55,16 +60,39 @@ new_calendar <- function(..., inherit = NULL, class = character()) {
     class = c(class, "mt_calendar")
   )
   
-  # Create a reference environment that wraps the calendar
-  cal_env <- new.env(parent = emptyenv())
-  
-  # Add the environment reference to each time unit
-  for (i in seq_along(cal)) {
-    attr(cal[[i]], "cal") <- cal_env
+  # Each calendar owns subclasses, including for units it inherits or reuses.
+  # Keep the calendar and shared unit definition in a declared getter so that
+  # class reconstruction and serialization preserve their context.
+  contexts <- vector("list", length(cal))
+  calendar_id <- if (length(class) && isNamespace(parent.frame())) {
+    class[[1L]]
+  } else {
+    prefix <- if (length(class)) class[[1L]] else "calendar"
+    basename(tempfile(paste0(prefix, "_")))
   }
-  
-  # Add reference to self in environment
-  cal_env$calendar <- cal
+  for (i in seq_along(cal)) {
+    context <- new.env(parent = emptyenv())
+    context$unit <- unit_definition(cal[[i]])
+    contexts[[i]] <- context
+    getter <- local({
+      context <- context
+      function(self) context
+    })
+    cal[[i]] <- S7::new_class(
+      name = paste(calendar_id, names(cal)[[i]], sep = "_"),
+      parent = cal[[i]],
+      package = topNamespaceName(parent.frame()),
+      properties = list(
+        .calendar = S7::new_property(
+          class = S7::class_environment,
+          getter = getter
+        )
+      )
+    )
+  }
+  for (context in contexts) {
+    context$calendar <- cal
+  }
   
   cal
 }
@@ -125,10 +153,21 @@ time_calendar <- S7::new_generic("calendar", c("x"))
 method(time_calendar, S7::class_Date) <- function(x) cal_gregorian
 method(time_calendar, S7::class_POSIXt) <- function(x) cal_gregorian
 method(time_calendar, mt_unit) <- function(x) {
-  attr(S7::S7_class(x), "cal")$calendar
+  if (S7::prop_exists(x, ".calendar")) x@.calendar$calendar
 }
 method(time_calendar, class_mixtime) <- function(x) {
   time_calendar(chronon_glb(x))
 }
 method(time_calendar, mt_time) <- function(x) time_calendar(time_chronon(x))
 method(time_calendar, S7::class_any) <- function(x) cal_gregorian
+
+# The calendar subclasses share the identity of the supplied time unit for
+# graph topology. Their actual classes still determine arithmetic dispatch.
+unit_definition <- function(x) {
+  if (inherits(x, "S7_class")) {
+    property <- x@properties[[".calendar"]]
+    if (is.null(property)) x else property$getter(NULL)$unit
+  } else {
+    if (S7::prop_exists(x, ".calendar")) x@.calendar$unit else S7::S7_class(x)
+  }
+}

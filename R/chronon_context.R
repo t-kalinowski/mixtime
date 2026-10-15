@@ -128,7 +128,7 @@ chronon_in_context <- function(chronon, ctx) {
     names(chronon_context(ctx))
   )
   if (length(shared)) {
-    props(chronon)[shared] <- props(ctx)[shared]
+    props(chronon) <- props(ctx, shared)
   }
   chronon
 }

@@ -1,5 +1,7 @@
 # mixtime 0.4.0
 
+* Updated compatibility with development S7, preserving calendar lookup, date parsing, and inherited calendar arithmetic.
+
 ## New features
 
 * Added the twelve remaining base relations of Allen's interval algebra as

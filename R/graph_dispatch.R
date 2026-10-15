@@ -38,7 +38,7 @@
 # }
 
 method_signatures <- function(generic) {
-  traverse_methods(generic@methods)
+  lapply(S7::S7_methods(generic = generic)$signature, unclass)
 }
 
 S7_signature_id <- function(sig) {
@@ -55,8 +55,10 @@ S7_signature_id <- function(sig) {
 # S7_graph_dispatch(), S7_graph_dispatch_multi() and S7_graph_glb(): the
 # de-duplicated node classes, their character ids, and integer edge endpoints.
 compile_signature_graph <- function(signatures) {
-  classes <- vec_unique(list_unchop(signatures))
+  classes <- list_unchop(signatures)
   chr_classes <- vapply(classes, S7_class_id, character(1L))
+  classes <- classes[!duplicated(chr_classes)]
+  chr_classes <- unique(chr_classes)
 
   int_edges <- vec_match(unlist(S7_signature_id(signatures)), chr_classes)
 
@@ -213,7 +215,7 @@ S7_graph_dispatch <- function(graph, start, end) {
   }
 
   # Instantiate path of classed S7 objects for dispatch
-  graph$classes[int_path]
+  graph_unit_classes(graph$classes[int_path], list(end, start))
 }
 
 # Directed reachability: is `end` reachable from `start` by following edges in
@@ -336,23 +338,84 @@ chronon_fixed_multiple <- function(chronon, unit, n) {
 }
 
 S7_class_id <- function(x) {
-  if (inherits(x, "S7_object") && !inherits(x, "S7_class")) {
-    # An S7 object's class attribute already begins with its class id, so an
-    # instance needs neither a class lookup nor any property access.
-    return(class(x)[[1L]])
-  }
+  x <- unit_definition(x)
   # A class not attached to a package is identified by its name alone.
   package <- x@package
   if (is.null(package)) x@name else paste0(package, "::", x@name)
 }
 
-traverse_methods <- function(x) {
-  if (!is.environment(x)) {
-    return(list(x@signature))
+# Use the caller's calendar classes for graph waypoints whenever that calendar
+# supplies the shared unit. This lets inherited and overridden methods dispatch
+# normally while keeping the graph's existing unit identities and routes.
+graph_unit_classes <- function(classes, granules) {
+  units <- unlist(lapply(granules, time_calendar), recursive = FALSE)
+  ids <- vapply(units, S7_class_id, character(1L))
+  matches <- match(vapply(classes, S7_class_id, character(1L)), ids)
+  found <- !is.na(matches)
+  classes[found] <- units[matches[found]]
+  classes
+}
+
+graph_bound_class <- function(class, chronons) {
+  # Keep the graph's neutral calendar when input contexts need reconciliation.
+  contexts <- lapply(chronons, chronon_context)
+  if (!all(vapply(contexts, identical, logical(1L), contexts[[1L]]))) {
+    return(class)
+  }
+  calendar <- time_calendar(class(n = 1L))
+  same_calendar <- vapply(
+    chronons,
+    function(x) {
+      identical(time_calendar(x), calendar)
+    },
+    logical(1L)
+  )
+  graph_unit_classes(
+    list(class),
+    c(chronons[same_calendar], chronons[!same_calendar])
+  )[[1L]]
+}
+
+chronon_has_method <- function(generic, x, y) {
+  !identical(
+    method(generic, object = list(x, y)),
+    method(generic, class = list(mt_unit, mt_unit))
+  )
+}
+
+# A shared unit can connect methods from different calendars. Resolve such a
+# hop to the registered signature's actual classes, then recurse through the
+# generic rather than calling its graph-search fallback again.
+chronon_method_units <- function(generic, x, y) {
+  if (chronon_has_method(generic, x, y)) {
+    return(list(x, y))
   }
 
-  methods <- lapply(names(x), function(class) traverse_methods(x[[class]]))
-  unlist(methods, recursive = FALSE)
+  signatures <- method_signatures(generic)
+  matches <- vapply(
+    signatures,
+    function(sig) {
+      identical(S7_class_id(sig[[1L]]), S7_class_id(x)) &&
+        identical(S7_class_id(sig[[2L]]), S7_class_id(y))
+    },
+    logical(1L)
+  )
+  signatures <- signatures[matches]
+  if (length(signatures) == 0L) {
+    return(NULL)
+  }
+
+  # Prefer the signature matching the supplied objects, in S7's argument
+  # order. A method on a sibling calendar should not replace an inherited one.
+  rank <- vapply(
+    signatures,
+    function(sig) {
+      2L * S7::S7_inherits(x, sig[[1L]]) + S7::S7_inherits(y, sig[[2L]])
+    },
+    integer(1L)
+  )
+  signature <- signatures[[which.max(rank)]]
+  list(granule_reclass(x, signature[[1L]]), granule_reclass(y, signature[[2L]]))
 }
 
 
@@ -610,8 +673,9 @@ S7_graph_dispatch_multi <- function(
   # Properties only need copying onto a constructed node when `start` holds one
   # that is not naive (e.g. a time zone) for it to inherit.
   start_informs <- any(
-    !is.naive(props(start)[setdiff(names(props(start)), "n")])
+    !is.naive(granule_props(start)[setdiff(names(granule_props(start)), "n")])
   )
+  node_classes <- graph_unit_classes(graph$classes, c(list(start), supplied))
 
   resolve_tree <- function(node) {
     node_id <- chr_classes[[node$node]]
@@ -625,7 +689,7 @@ S7_graph_dispatch_multi <- function(
     } else if (length(finest) && supplied_n[[finest]] <= 1) {
       supplied[[finest]]
     } else {
-      granule <- graph$classes[[node$node]](1L)
+      granule <- node_classes[[node$node]](n = 1L)
       if (start_informs) granule_inherit_props(granule, start) else granule
     }
 
@@ -787,7 +851,7 @@ S7_graph_glb <- function(graph, chronons) {
   }
 
   # Return glb
-  graph$classes[[int_glb]]
+  graph_bound_class(graph$classes[[int_glb]], chronons)
 }
 
 S7_graph_lub <- function(graph, chronons) {
@@ -810,7 +874,7 @@ S7_graph_lub <- function(graph, chronons) {
   }
 
   # Return lub
-  graph$classes[[int_lub]]
+  graph_bound_class(graph$classes[[int_lub]], chronons)
 }
 
 # Finds the least upper bound that contains all `nodes` in a graph defined by

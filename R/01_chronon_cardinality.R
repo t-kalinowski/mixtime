@@ -102,22 +102,23 @@ method(chronon_cardinality, list(mt_unit, mt_unit)) <- function(x, y, at = NULL)
   }
 
   # Use a registered fixed-cardinality method if available.
-  if (!is.null(chronon_cardinality_fixed@methods[[S7_class_id(x)]][[S7_class_id(y)]])) {
-    return(chronon_cardinality_fixed(x, y))
+  direct <- chronon_method_units(chronon_cardinality_fixed, x, y)
+  if (!is.null(direct)) {
+    return(chronon_cardinality_fixed(direct[[1L]], direct[[2L]]))
   }
-  if (!is.null(chronon_cardinality_fixed@methods[[S7_class_id(y)]][[S7_class_id(x)]])) {
-    return(1 / chronon_cardinality_fixed(y, x))
+  inverse <- chronon_method_units(chronon_cardinality_fixed, y, x)
+  if (!is.null(inverse)) {
+    return(1 / chronon_cardinality_fixed(inverse[[1L]], inverse[[2L]]))
   }
 
-  # Try to find a method with arguments swapped
-  # (This feels unsafe for finding exact matching of S7 dispatch.)
-
-  if (!is.null(y_env <- chronon_cardinality@methods[[S7_class_id(y)]])) {
-    if (S7_class_id(x) %in% names(y_env)) {
-      # Matching inverse method found, use it with inversion.
-      # TODO: Convert at to x units?
-      return(1/chronon_cardinality(y, x, at = at))
-    }
+  direct <- chronon_method_units(chronon_cardinality, x, y)
+  if (!is.null(direct)) {
+    return(chronon_cardinality(direct[[1L]], direct[[2L]], at = at))
+  }
+  inverse <- chronon_method_units(chronon_cardinality, y, x)
+  if (!is.null(inverse)) {
+    # TODO: Convert at to x units?
+    return(1 / chronon_cardinality(inverse[[1L]], inverse[[2L]], at = at))
   }
 
   # No specific method defined between these classes
@@ -163,11 +164,14 @@ method(chronon_cardinality_fixed, list(mt_unit, mt_unit)) <- function(x, y) {
     fine <- path[[i]](1L)
     coarse <- path[[i - 1]](1L)
     # Allow the fixed cardinality method to be defined in either direction.
-    result <- result * if (is.null(chronon_cardinality_fixed@methods[[S7_class_id(fine)]][[S7_class_id(coarse)]])) {
-      1 / chronon_cardinality_fixed(coarse, fine)
-    } else {
-      chronon_cardinality_fixed(fine, coarse)
-    }
+    direct <- chronon_method_units(chronon_cardinality_fixed, fine, coarse)
+    result <- result *
+      if (is.null(direct)) {
+        inverse <- chronon_method_units(chronon_cardinality_fixed, coarse, fine)
+        1 / chronon_cardinality_fixed(inverse[[1L]], inverse[[2L]])
+      } else {
+        chronon_cardinality_fixed(direct[[1L]], direct[[2L]])
+      }
   }
   result
 }

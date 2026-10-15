@@ -22,9 +22,9 @@ test_that("coarse-to-fine conversion takes a monotone path", {
   # Routing quarters to days via years would make a quarter an even 1/4 of the
   # year (91.5 days in 2020) rather than the 91 days of January to March.
   path <- S7_graph_dispatch(chronon_divmod_graph(), quarter, day)
-  expect_equal(
-    vapply(path, function(unit) class(unit(1L))[[1L]], character(1L)),
-    c("mixtime::tu_quarter", "mixtime::tu_month", "mixtime::tu_day")
+  expect_identical(
+    path,
+    list(cal_gregorian$quarter, cal_gregorian$month, cal_gregorian$day)
   )
 
   # Quarter boundaries land exactly on the day they begin.
